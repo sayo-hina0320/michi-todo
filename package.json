@@ -1,0 +1,9 @@
+{
+  "name": "michi-todo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iPhoneで使える、進捗が見える個人用Todo PWA",
+  "scripts": {
+    "check": "node --check app.js && node --check sw.js && node tests/smoke.cjs"
+  }
+}
