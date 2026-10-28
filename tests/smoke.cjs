@@ -15,3 +15,27 @@ assert.strictEqual(ctx.document.title,'Todo一覧 — michi.');
 ctx.location.hash='';vm.runInContext('syncView(false)',ctx);
 assert.strictEqual(ctx.document.title,'michi. — マイTodo');
 console.log('PASS: overview link, all records regardless of dashboard filter, no mutation controls, unchanged stored data, route titles');
+
+vm.runInContext(`todos = [
+  {id:'a',name:'先の学習',category:'学習',due:'2026-12-01',done:8,total:10,unit:'章',next:''},
+  {id:'b',name:'近い学習',category:'学習',due:'2026-11-01',done:1,total:10,unit:'章',next:''},
+  {id:'c',name:'暮らしのTodo',category:'暮らし',due:'2026-11-15',done:5,total:10,unit:'件',next:''},
+  {id:'d',name:'期限なし',category:'',due:'',done:0,total:10,unit:'件',next:''}
+];renderOverview();`,ctx);
+function overviewOrder(){return [...element('overviewList').innerHTML.matchAll(/<h2>(.*?)<\/h2>/g)].map(m=>m[1])}
+assert.deepStrictEqual(overviewOrder(),['近い学習','暮らしのTodo','先の学習','期限なし']);
+element('overviewCategory').onchange({target:{value:'category:学習'}});
+assert.deepStrictEqual(overviewOrder(),['近い学習','先の学習']);
+assert(element('overviewCount').textContent.includes('2 / 4件'));
+element('overviewSort').onchange({target:{value:'progress-desc'}});
+assert.deepStrictEqual(overviewOrder(),['先の学習','近い学習']);
+element('overviewCategory').onchange({target:{value:'all'}});
+element('overviewSort').onchange({target:{value:'due-desc'}});
+assert.deepStrictEqual(overviewOrder(),['先の学習','暮らしのTodo','近い学習','期限なし']);
+element('overviewSort').onchange({target:{value:'progress-asc'}});
+assert.deepStrictEqual(overviewOrder(),['期限なし','近い学習','暮らしのTodo','先の学習']);
+element('overviewCategory').onchange({target:{value:'category:'}});
+assert.deepStrictEqual(overviewOrder(),['期限なし']);
+assert(!element('overviewList').innerHTML.includes('<button'));
+assert.strictEqual(db.get('michi.todos.v1'),beforeOverview);
+console.log('PASS: category/uncategorized filters, four sort directions, no-deadline placement, counts and unchanged storage');

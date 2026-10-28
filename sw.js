@@ -1,6 +1,6 @@
 'use strict';
-const CACHE = 'michi-v3';
-const ASSETS = ['./', './index.html', './app.js?v=1.1.0', './manifest.webmanifest', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
+const CACHE = 'michi-v4';
+const ASSETS = ['./', './index.html', './app.js?v=1.2.0', './manifest.webmanifest', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(async cache => {

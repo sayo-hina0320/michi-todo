@@ -2,23 +2,55 @@
 const $=id=>document.getElementById(id),KEY='michi.todos.v1';let storageBlocked=false;let todos=[],filter='all',current=null,pending=[],timer;const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const percent=t=>Math.round(t.done/t.total*100);function valid(t){return t&&typeof t.id==='string'&&t.id.length<=100&&typeof t.name==='string'&&t.name.trim().length>0&&t.name.length<=100&&typeof t.category==='string'&&t.category.length<=40&&typeof t.unit==='string'&&t.unit.trim().length>0&&t.unit.length<=12&&typeof t.next==='string'&&t.next.length<=2000&&Number.isInteger(t.total)&&t.total>0&&t.total<=1000000&&Number.isInteger(t.done)&&t.done>=0&&t.done<=t.total&&typeof t.due==='string'&&(!t.due||(/^\d{4}-\d{2}-\d{2}$/.test(t.due)&&!isNaN(Date.parse(t.due))))}function clean(t){return {id:t.id,name:t.name,category:t.category,unit:t.unit,next:t.next,total:t.total,done:t.done,due:t.due}}function notify(s){$('toast').textContent=s;$('toast').classList.remove('hidden');clearTimeout(timer);timer=setTimeout(()=>$('toast').classList.add('hidden'),3000)}function persist(){if(storageBlocked)return false;try{localStorage.setItem(KEY,JSON.stringify(todos));$('storageWarning').classList.add('hidden');return true}catch{$('storageWarning').classList.remove('hidden');return false}}try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(!Array.isArray(parsed)||!parsed.every(valid))throw Error();todos=parsed.map(clean)}}catch{storageBlocked=true;$('storageWarning').classList.remove('hidden');$('storageWarning').textContent='保存データを読み込めませんでした。既存データ保護のため、このページを閉じる前に状況を確認してください。';$('add').disabled=true;}
 function render(){const active=todos.filter(t=>t.done<t.total),near=active.filter(t=>t.due).map(t=>t.due).sort()[0];const overall=todos.length?Math.round(todos.reduce((n,t)=>n+t.done/t.total,0)/todos.length*100):0;$('date').textContent=new Intl.DateTimeFormat('ja-JP',{month:'long',day:'numeric',weekday:'long'}).format(new Date());$('summary').innerHTML=`<a class="hero" href="#todos" aria-label="作成したTodoの一覧を見る"><div><div class="tag">TOTAL PROGRESS</div><h2>着実に、前へ。</h2><p>${todos.filter(t=>t.done===t.total).length} / ${todos.length} 件のTodoが完了</p><p>各Todoの達成率の平均</p><p class="hero-link">Todo一覧を見る →</p></div><div class="ring" style="--angle:${overall*3.6}deg"><b>${overall}%</b><small>全体の進捗</small></div></a><div class="tiles"><div class="tile"><b>${active.length}</b><small>進行中のTodo</small></div><div class="tile"><b>${near?esc(near.slice(5).replace('-','/')):'—'}</b><small>いちばん近い期限</small></div></div>`;document.querySelectorAll('[data-filter]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.filter===filter));const shown=todos.filter(t=>filter==='all'||(filter==='done'?t.done===t.total:t.done<t.total)).sort((a,b)=>(a.done===a.total)-(b.done===b.total)||(a.due||'9999').localeCompare(b.due||'9999'));$('list').innerHTML=shown.length?shown.map(t=>`<article class="card"><div class="tag">${esc(t.category||'MY TODO')}${t.due?' · '+esc(t.due.replaceAll('-','/'))+' まで':''}${t.done===t.total?' · 完了':''}</div><div class="row"><h2>${esc(t.name)}</h2><div class="pct">${percent(t)}%</div></div><div class="track" role="progressbar" aria-label="${esc(t.name)}の進捗" aria-valuenow="${percent(t)}" aria-valuemin="0" aria-valuemax="100"><div class="fill" style="width:${percent(t)}%"></div></div><div class="detail">${t.total}${esc(t.unit)}のうち ${t.done}${esc(t.unit)}完了</div>${t.next?`<div class="next">${t.done===t.total?'メモ：':'次 → '}${esc(t.next)}</div>`:''}<div class="actions"><button data-id="${esc(t.id)}" data-action="progress">進捗を記録</button><button class="light" data-id="${esc(t.id)}" data-action="edit">編集</button><button class="light" data-id="${esc(t.id)}" data-action="delete">削除</button></div></article>`).join(''):'<div class="empty">'+(todos.length?'該当するTodoはありません。':'最初の一歩を、ここから。<br>「＋ Todoを追加」で始めましょう。')+'</div>';renderOverview();syncView(false)}
 
-// The overview only renders existing records. It never changes or saves Todo data.
+// These display preferences do not change the saved Todo records.
+let overviewCategory = 'all';
+let overviewSort = 'due-asc';
+
+function compareOverview(a, b) {
+  const nameOrder = a.name.localeCompare(b.name, 'ja');
+  if (overviewSort.startsWith('progress-')) {
+    const difference = a.done / a.total - b.done / b.total;
+    return (overviewSort === 'progress-desc' ? -difference : difference) || nameOrder;
+  }
+  // Undated items always appear last, in either direction.
+  if (!a.due || !b.due) return a.due ? -1 : b.due ? 1 : nameOrder;
+  const difference = a.due.localeCompare(b.due);
+  return (overviewSort === 'due-desc' ? -difference : difference) || nameOrder;
+}
+
 function renderOverview() {
-  const items = [...todos].sort((a, b) =>
-    (a.done === a.total) - (b.done === b.total) ||
-    (a.due || '9999').localeCompare(b.due || '9999')
+  const categories = [...new Set(todos.map(todo => todo.category))].sort((a, b) =>
+    a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'ja')
   );
+  if (overviewCategory !== 'all' && !categories.some(category => 'category:' + category === overviewCategory)) {
+    overviewCategory = 'all';
+  }
+  $('overviewCategory').innerHTML = '<option value="all">すべてのカテゴリ</option>' + categories.map(category =>
+    `<option value="${esc('category:' + category)}">${esc(category || '未分類')}</option>`
+  ).join('');
+  $('overviewCategory').value = overviewCategory;
+  $('overviewSort').value = overviewSort;
+  const items = todos.filter(todo => overviewCategory === 'all' || 'category:' + todo.category === overviewCategory).sort(compareOverview);
   const completed = items.filter(todo => todo.done === todo.total).length;
-  $('overviewCount').textContent = `${items.length}件のTodo · 進行中 ${items.length - completed}件 · 完了 ${completed}件`;
+  $('overviewCount').textContent = `${items.length} / ${todos.length}件を表示 · 進行中 ${items.length - completed}件 · 完了 ${completed}件`;
   $('overviewList').innerHTML = items.length ? items.map(todo => `
     <article class="card">
-      <div class="tag">${esc(todo.category || 'MY TODO')} · ${todo.done === todo.total ? '完了' : todo.done === 0 ? '未着手' : '進行中'}${todo.due ? ' · ' + esc(todo.due.replaceAll('-', '/')) + ' まで' : ''}</div>
+      <div class="tag">${esc(todo.category || '未分類')} · ${todo.done === todo.total ? '完了' : todo.done === 0 ? '未着手' : '進行中'}${todo.due ? ' · ' + esc(todo.due.replaceAll('-', '/')) + ' まで' : ' · 期限なし'}</div>
       <div class="row"><h2>${esc(todo.name)}</h2><div class="pct">${percent(todo)}%</div></div>
       <div class="track" role="progressbar" aria-label="${esc(todo.name)}の進捗" aria-valuenow="${percent(todo)}" aria-valuemin="0" aria-valuemax="100"><div class="fill" style="width:${percent(todo)}%"></div></div>
       <div class="detail">${todo.total}${esc(todo.unit)}のうち ${todo.done}${esc(todo.unit)}完了</div>
       ${todo.next ? `<div class="next">${todo.done === todo.total ? 'メモ：' : '次 → '}${esc(todo.next)}</div>` : ''}
-    </article>`).join('') : '<div class="empty">まだTodoがありません。<br>ダッシュボードからTodoを追加できます。</div>';
+    </article>`).join('') : '<div class="empty">' + (todos.length ? 'このカテゴリのTodoはありません。' : 'まだTodoがありません。<br>ダッシュボードからTodoを追加できます。') + '</div>';
 }
+
+$('overviewCategory').onchange = event => {
+  overviewCategory = event.target.value;
+  renderOverview();
+};
+$('overviewSort').onchange = event => {
+  overviewSort = event.target.value;
+  renderOverview();
+};
 
 function syncView(focusHeading = true) {
   const isOverview = location.hash === '#todos';
